@@ -1,30 +1,290 @@
 ---
-title: "Results and Codes"
-author: "Cintya, Fernanda, William"
-date: "13/04/2022"
-output: html_document
+title: "Does giving information about labor market and migrant's education level affect the perceived skills transferability?"
+author: "William Fernandez, Fernanda Gomes, Cintya Huaire"
+date: "`r format(Sys.time(), '%B %d, %Y | %H:%M:%S | %Z')`"
+output: rmdformats::downcute
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+# Packages
+```{r, results='hide', message = FALSE, warning = FALSE}
+library(tidyverse) # To use dplyr functions and the pipe operator when needed
+library(ggplot2) # To visualize data
+library(stargazer) # To format model output
+library(fastDummies) # To create dummies
+library(vtable) # To create descriptive variable table
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+# Loading Dataset
+```{r, results='hide', message = FALSE, warning = FALSE}
+dta_experiment <- read.csv("final_data.csv", sep = ";")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Processing Dataset
+```{r, results='hide', message = FALSE, warning = FALSE}
+##Cleaning
+# excluding unfinished survey
+attach(dta_experiment)
+newdata <- dta_experiment[ which(FINISHED==1 ),]
+detach(dta_experiment)
+
+# removing 3 observations that were not assign to any group, and surveys without consent
+newdata <- newdata[ which(newdata$IL02!=" " | newdata$C103 =="I agree"),]
+
+#dropping observations of non students
+newdata <- newdata[ which(newdata$A108!="No" ),]
+
+##Transformation and creation of variables
+#changing age into numeric
+newdata$A101 <- as.numeric(newdata$A101)
+
+regressiondata <- newdata
+
+#creating dummies for descriptive
+newdata$europe<- ifelse(newdata$A110=="None of the above",1,0)
+
+newdata_dummy<- fastDummies::dummy_cols(newdata, select_columns = c("A102", "A105","A109"), remove_first_dummy = TRUE)
+myvars <- names(newdata_dummy) %in% c("CASE","QUESTNNR","IL01_CP", 
+                                      "MODE","STARTED","SERIAL", "TIME001", "TIME002", "TIME003",
+                                      "TIME004", "TIME005","TIME006", "TIME_SUM", "LASTDATA","C103",
+                                      "REF", "MAILSENT", "FINISHED","Q_VIEWER","LASTPAGE","MAXPAGE","MISSING","MISSREL","TIME_RSI","DEG_TIME")
+newdata_dummy <- newdata_dummy[!myvars]
+
+newdata_dummy$ind_101<- ifelse(newdata_dummy$G101=="Neither agree or disagree",2,
+                                   ifelse(newdata_dummy$G101=="Somewhat agree",3,
+                                      ifelse(newdata_dummy$G101=="Somewhat disagree",1, 
+                                       ifelse(newdata_dummy$G101=="Completely agree",4,0)))) 
+
+newdata_dummy$ind_102<- ifelse(newdata_dummy$G101=="Neither agree or disagree",2,
+                                   ifelse(newdata_dummy$G101=="Somewhat agree",3,
+                                          ifelse(newdata_dummy$G101=="Somewhat disagree",1, 
+                                                 ifelse(newdata_dummy$G101=="Completely agree",4,0)))) 
+newdata_dummy$ind_103<- ifelse(newdata_dummy$G101=="Neither agree or disagree",2,
+                                       ifelse(newdata_dummy$G101=="Somewhat agree",3,
+                                              ifelse(newdata_dummy$G101=="Somewhat disagree",1, 
+                                                     ifelse(newdata_dummy$G101=="Completely agree",4,0)))) 
+
+newdata_dummy$ind_104<- ifelse(newdata_dummy$G101=="Neither agree or disagree",2,
+                                       ifelse(newdata_dummy$G101=="Somewhat agree",3,
+                                              ifelse(newdata_dummy$G101=="Somewhat disagree",1, 
+                                                     ifelse(newdata_dummy$G101=="Completely agree",4,0))))
+
+
+#creating dummies for regressions
+regressiondata$dgerman <- ifelse(regressiondata$A104 == "Germany", 1,0)
+
+regressiondata$dprivate <- ifelse(regressiondata$A109 == "Private",1,0)
+
+regressiondata$deurope <- ifelse(regressiondata$A110 == "None of the above",1,0)
+
+regressiondata$dcontrol <- ifelse(regressiondata$IL02 == "Control group", 1,0)
+
+regressiondata$treatment1 <- ifelse(regressiondata$IL02 == "Group 1",1,0)
+
+regressiondata$treatment2 <- ifelse(regressiondata$IL02 == "Group 2",1,0)
+
+# transforming the outcome variables in factors
+regressiondata$G102 <- factor(regressiondata$G102, levels = c("Completely agree","Somewhat agree", "Neither agree or disagree", "Somewhat disagree", "Completely disagree", "Not answered"))
+
+regressiondata$G103 <- factor(regressiondata$G103, levels = c("Completely agree","Somewhat agree", "Neither agree or disagree", "Somewhat disagree", "Completely disagree", "Not answered"))
+
+regressiondata$G104 <- factor(regressiondata$G104, levels = c("Completely agree","Somewhat agree", "Neither agree or disagree", "Somewhat disagree", "Completely disagree", "Not answered"))
+
+regressiondata <- regressiondata %>% dplyr::select("A101", "A102", "A104", "A105", "A106", "A107", "G102", "G103", "G104", "dgerman", "dprivate", "deurope", "dcontrol", "treatment1", "treatment2")
+```
+
+# Descriptive
+
+```{r, results='hide', message = FALSE, warning = FALSE}
+## Descriptives using dummies
+ggplot(newdata_dummy, aes(x = G101, fill = factor(G101))) + 
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Distribution of Perception inmigrants education ",
+       x = "Perception of inmigrants education",
+       y = "Density")
+
+ggsave("distribution_ g101.png")
+
+
+ggplot(newdata_dummy, aes(x = G102, fill = factor(G102))) + 
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Distribution of Perception of skills transferability of immigrants in German labor market ",
+       x = "Perception of Skills transferability Q2",
+       y = "Density")
+
+ggsave("distribution_ g102.png")
+
+ggplot(newdata_dummy, aes(x = G103, fill = factor(G103))) + 
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Distribution of Perception of skills transferability of immigrants in German labor market ",
+       x = "Perception of Skills transferability Q3",
+       y = "Density")
+
+ggsave("distribution_ g103.png")
+
+ggplot(newdata_dummy, aes(x = G104, fill = factor(G104))) + 
+  geom_density(alpha = 0.5) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Distribution of Perception of skills transferability of immigrants in German labor market ",
+       x = "Perception of Skills transferability Q4",
+       y = "Density")
+
+ggsave("distribution_ g104.png")
+
+# distribution of population by age (the only numeric variable)
+
+ggplot(newdata_dummy, aes(x = A101 )) + 
+  geom_density(alpha = 0.5, fill="#FF6666") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Distribution of age within population",
+       x = "Age",
+       y = "Density")
+
+ggsave("age.png")
+```
+
+A LOT OF ERRORS
+
+# descriptive statistics without dummies
+statist <- newdata_dummy %>% select( -A108, -IL02, -A102_Male, -`A102_Non-binary`, - `A102_Prefer not to say`, - `A105_Employed Part-time`,- A105_Unemployed, -europe, -A109_Public, -IL02_CP)
+labs <- c("Age", "Gender", "Employment type", "Education level", "University type","Ethnicity","Requirements for residency", "Perception inmmigrants´s education", "Skills transferability control","Skills transferability group 1","Skills transferability group 2")
+
+stats <- sumtable(statist ,labels = labs, summ=c('notNA(x)',"mean(x)", "median(x)","sd(x^2)", 'min(x)','max(x)'), summ.names = list(c('N','Mean',"Median",'SD','Min','Max'))) write.table(stats, file = "sumstats_d.tex")
+
+# descriptive statistics with dummies
+newd <- newdata_dummy %>% select(A102_Male,  `A105_Employed Part-time`, A105_Unemployed, europe, A109_Public)
+
+labs <- c("Male", "Employed part-time","Unemployed", "European citizen", "Public university")
+##ERROR stats_1 <- sumtable(newd ,labels = labs, summ=c('notNA(x)',"mean(x)", "median(x)","sd(x^2)", 'min(x)','max(x)'), summ.names = list(c('N','Mean',"Median",'SD','Min','Max'))) write.table(stats_1, file = "sumstats_2.tex")
+
+# balance check
+
+#matchit only accept a treat binomial
+newdata_dummy$temp<- ifelse(newdata_dummy$IL02=="Group 1",1,ifelse(newdata_dummy$IL02=="Group 2",2,0))
+
+#subsetting data to use the dummy
+newdata_temp <- newdata_dummy[ which(newdata_dummy$temp==2 |newdata_dummy$temp==0),]
+newdata_temp2 <- newdata_dummy[ which(newdata_dummy$temp2==1| newdata_dummy$temp==0),]
+
+#1:1 NN matching w/ replacement on a logistic regression PS
+
+newdata_temp$cont<- ifelse(newdata_temp$temp==2, 1,0)
+m.out1 <- matchit(cont~ ind_102 + ind_103 , data = newdata_temp,
+                 replace = TRUE)
+
+labs1 <- c("ST control", "ST group 1")
+s <- summary(m.out1, labels=labs1)
+capture.output(s, file="balance_1.tex")
+
+# including dummies
+labs2 <- c("Perception 1", "Perception 2","Perception 3", "Perception 4")
+summary(m.out1,  addlvariables = A102_Male + `A105_Employed Part-time` + A105_Unemployed +europe + A109_Public, labels=labs, file="balance_1.tex")
+
+newdata_temp2$cont<- ifelse(newdata_temp$temp==2, 1,0)
+m.out2 <- matchit(cont~  ind_102 + ind_104, data = newdata_temp2,
+                 replace = TRUE)
+
+labs1 <- c("ST control", "ST group 2")
+ s1<- summary(m.out2, labels=labs1)
+ capture.output(s1, file="balance_2.tex")
+
+# Regressions
+```{r, results='hide', message = FALSE, warning = FALSE}
+# First: only outcome and treatments
+
+control_model <- lm(G102 ~ dcontrol, data = regressiondata)
+
+treatment1_model <- lm(G102 ~ treatment1, data = regressiondata)
+  
+treatment2_model <- lm(G102 ~ treatment2, data = regressiondata)
+  
+stargazer::stargazer(control_model, treatment1_model, treatment2_model,
+                     type = "latex",
+                     report = ("vc*p"),
+                     title = "Regressions focused only on the treatments",
+                     model.numbers = FALSE,
+                     covariate.labels = c("Treated", "Treatment 1", "Treatment 2"),
+                     dep.var.labels = "Perceived Skills Transferability",
+                     dep.var.caption = "")
+
+# Second: outcome, treatments and sociodemographics
+controlvariables_model <- lm(G102 ~ dcontrol + A101 + A102 + A105 + A106 + A107 , data = regressiondata)
+  
+stargazer::stargazer(controlvariables_model,
+                     type = "latex",
+                     report = ("vc*p"),
+                     title = "Regression with sociodemographics",
+                     model.numbers = FALSE,
+                     covariate.labels = c("Treated", "Age", "Male", "Non-binary", "Prefer not to say (Gender)", "Employed Part-time", "Unemployed", "High School", "Master Degree", "Caucasian/White", "East Asian", "Latino or Hispanic", "Other (Ethnicity)", "South Asian", "Two or More (Ethnicity)"),
+                     dep.var.labels = "Perceived Skills Transferability",
+                     dep.var.caption = "")
+
+# Third: with interactions (german, european, private)
+german_model <- lm(G102 ~ dcontrol * dgerman , data = regressiondata)
+
+t1german_model <- lm(G102 ~ treatment1 * dgerman, data = regressiondata)
+  
+t2german_model <- lm(G102 ~ treatment2 * dgerman, data = regressiondata)
+
+stargazer::stargazer(german_model, t1german_model, t2german_model,
+                     type = "latex",
+                     report = ("vc*p"),
+                     title = "Regressions with interaction (Germans)",
+                     covariate.labels = c("Treated", "Treatment 1", "Treatment 2", "Germans", "Interaction (T/G)", "Interaction (T1/G)", "Interaction (T2/G)"),
+                     dep.var.labels = "Perceived Skills Transferability",
+                     dep.var.caption = "")
+
+european_model <- lm(G102 ~ dcontrol * deurope , data = regressiondata)
+
+t1EU_model <- lm(G102 ~ treatment1 * deurope, data = regressiondata)
+  
+t2EU_model <- lm(G102 ~ treatment2 * deurope, data = regressiondata)
+
+stargazer::stargazer(european_model, t1EU_model, t2EU_model,
+                     type = "latex",
+                     report = ("vc*p"),
+                     title = "Regressions with interaction (UE)",
+                     covariate.labels = c("Treated", "Treatment 1", "Treatment 2", "Europeans", "Interaction (T/EU)", "Interaction (T1/EU)", "Interaction (T2/EU)"),
+                     dep.var.labels = "Perceived Skills Transferability",
+                     dep.var.caption = "")
+  
+private_model <- lm(G102 ~ dcontrol * dprivate , data = regressiondata)
+
+t1priv_model <- lm(G102 ~ treatment1 * dprivate, data = regressiondata)
+  
+t2priv_model <- lm(G102 ~ treatment2 * dprivate, data = regressiondata)
+
+stargazer::stargazer(private_model, t1priv_model, t2priv_model,
+                     type = "latex",
+                     report = ("vc*p"),
+                     title = "Regressions with interaction (Private University)",
+                     covariate.labels = c("Treated", "Treatment 1", "Treatment 2", "Private", "Interaction (T/P)", "Interaction (T1/P)", "Interaction (T2/P)"),
+                     dep.var.labels = "Perceived Skills Transferability",
+                     dep.var.caption = "")
+
+# Forth: using other outcome
+personal_model <- lm(G103 ~ dcontrol, data = regressiondata)
+
+competition_model <- lm(G104 ~ dcontrol, data = regressiondata)
+  
+stargazer::stargazer(personal_model, competition_model,
+                     type = "latex",
+                     report = ("vc*p"),
+                     title = "Regressions with Labor Market Concern",
+                     model.numbers = FALSE,
+                     covariate.labels = c("Treated"),
+                     dep.var.labels = "(Personal)", "(General)",
+                     dep.var.caption = "")
+
+```
