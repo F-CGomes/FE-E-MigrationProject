@@ -1,0 +1,294 @@
+---
+title: "Does giving information about labor market and migrant's education level affect the perceived skills transferability?"
+author: "William Fernandez, Fernanda Gomes, Cintya Huaire"
+date: "`r format(Sys.time(), '%B %d, %Y | %H:%M:%S | %Z')`"
+output: rmdformats::downcute
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages
+```{r, results='hide', message = FALSE, warning = FALSE}
+library(tidyverse) # To use dplyr functions and the pipe operator when needed
+library(ggplot2) # To visualize data
+library(stargazer) # To format model output
+library(modelsummary) # To customize the information displayed in your model summary tables
+```
+
+# Loading Dataset
+```{r, results='hide', message = FALSE, warning = FALSE}
+dta_experiment <- read.csv("final_data.csv", sep = ";")
+```
+
+# Processing Dataset
+```{r, results='hide', message = FALSE, warning = FALSE}
+##Cleaning
+# excluding unfinished survey
+attach(dta_experiment)
+newdata <- dta_experiment[ which(FINISHED==1 ),]
+detach(dta_experiment)
+
+# removing 3 observations that were not assign to any group, and surveys without consent
+newdata <- newdata[ which(newdata$IL02!=" " | newdata$C103 =="I agree"),]
+
+#dropping observations of non students
+newdata <- newdata[ which(newdata$A108!="No" ),]
+
+##Transformation and creation of variables
+#changing age into numeric
+newdata$A101 <- as.numeric(newdata$A101)
+
+#creating dummies for descriptive
+#Can't be named Europe because people who are not from Europe have marked none of the above as an option
+newdata$no_docs_req<- ifelse(newdata$A110=="None of the above", 1,0)
+
+regressiondata <- newdata
+
+#Fixing vars names 
+regressiondata$age <- regressiondata$A101
+
+regressiondata$country_birth <- regressiondata$A104
+
+#creating dummies for regressions
+regressiondata$dmale <- ifelse(regressiondata$A102 == "Male", 1,0)
+
+regressiondata$dgerman <- ifelse(regressiondata$A104 == "Germany", 1,0)
+
+regressiondata$dunemployed <- ifelse(regressiondata$A105 == "Unemployed", 1,0)
+
+regressiondata$dwhite <- ifelse(regressiondata$A107 == "Caucasian/White",1,0)
+
+regressiondata$dprivate <- ifelse(regressiondata$A109 == "Private",1,0)
+
+regressiondata$dno_docs_req <- ifelse(regressiondata$A110 == "None of the above",1,0)
+
+regressiondata$dcontrol <- ifelse(regressiondata$IL02 == "Control group", 1,0)
+
+regressiondata$treatment1 <- ifelse(regressiondata$IL02 == "Group 1",1,0)
+
+regressiondata$treatment2 <- ifelse(regressiondata$IL02 == "Group 2",1,0)
+
+regressiondata$dG101_ca <- ifelse(regressiondata$G101 == "Completely agree" , 1, 0)
+
+regressiondata$dG102_ca <- ifelse(regressiondata$G102 == "Completely agree" , 1, 0)
+
+regressiondata$dG103_ca <- ifelse(regressiondata$G103 == "Completely agree" , 1, 0)
+
+regressiondata$dG104_ca <- ifelse(regressiondata$G104 == "Completely agree" , 1, 0)
+
+# transforming the outcome variables and the educ variable in factors
+regressiondata$educ_level <- factor(regressiondata$A106, levels = c ("Master's Degree", "Bachelor's Degree", "High school"))
+
+regressiondata$G101 <- factor(regressiondata$G101, levels=c("Completely agree","Somewhat agree", "Neither agree nor disagree", "Somewhat disagree", "Completely disagree"))
+
+regressiondata$G102 <- factor(regressiondata$G102, levels = c("Completely agree","Somewhat agree", "Neither agree nor disagree", "Somewhat disagree", "Completely disagree"))
+
+regressiondata$G103 <- factor(regressiondata$G103, levels = c("Completely agree","Somewhat agree", "Neither agree nor disagree", "Somewhat disagree", "Completely disagree"))
+
+regressiondata$G104 <- factor(regressiondata$G104, levels = c("Completely agree","Somewhat agree", "Neither agree nor disagree", "Somewhat disagree", "Completely disagree"))
+
+# selecting relevant variables to work it
+
+regressiondata <- regressiondata %>% dplyr::select("age", "country_birth", "G101","G102", "G103", "G104", "dmale", "educ_level", "dgerman", "dunemployed", "dwhite", "dprivate", "dno_docs_req", "dcontrol", "treatment1", "treatment2", "dG101_ca", "dG102_ca", "dG103_ca", "dG104_ca")
+```
+
+# Descriptive
+
+```{r, results='hide', message = FALSE, warning = FALSE}
+
+ggplot(regressiondata, aes(x = G101, fill=G101)) + 
+  geom_bar(alpha = 0.6) +
+  theme_classic() +
+  labs(title = "G101: Immigrants in Germany are well educated",
+       x = "",
+       y = "") + 
+  theme(legend.position = "none")
+
+ggsave("../distribution_g101.png")
+
+
+ggplot(regressiondata, aes(x = G102, fill=G102)) + 
+  geom_bar(alpha = 0.6) +
+  theme_classic() +
+  labs(title = "G102: Immigrants can apply their skills in the German labor market (PST)",
+       x = "",
+       y = "") + 
+  theme(legend.position = "none")
+
+ggsave("../distribution_g102.png")
+
+
+ggplot(regressiondata, aes(x = G103, fill=G103)) + 
+  geom_bar(alpha = 0.6) +
+  theme_classic() +
+  labs(title = "G103: Immigrants will increase competition in the labor market for me personally (L1)",
+       x = "",
+       y = "") + 
+  theme(legend.position = "none",text = element_text(size=10))
+
+ggsave("../distribution_g103.png")
+
+ggplot(regressiondata, aes(x = G104, fill=G104)) + 
+  geom_bar(alpha = 0.6) +
+  theme_classic() +
+  labs(title = "G104: In general, immigrants will increase competition in the labor market (L2)",
+       x = "",
+       y = "") + 
+  theme(legend.position = "none",text = element_text(size=10))
+
+ggsave("../distribution_g104.png")
+
+
+#Distribution of age
+regressiondata %>%
+  dplyr::mutate(group_mean = mean(age)) %>% 
+  dplyr::mutate(group_median = median(age)) %>%
+ggplot(., aes(x = age)) + 
+  geom_density(alpha = 0.5, fill="#FF6666") +
+  geom_vline(aes(xintercept = group_mean), linetype = "longdash") + 
+  geom_vline(aes(xintercept = group_median), linetype = "solid") +
+  theme_classic() +
+  theme(legend.position = "bottom", plot.caption=element_text(hjust=0)) +
+  labs(title = "Distribution of age in the sample",
+       x = "Age*",
+       y = "", 
+       caption = "*Solid line represents the median and dashed line, the mean.")
+
+ggsave("../age.png")
+```
+
+
+# Balance Check 
+
+<em>done in Stata as we had two treatments</em>
+
+Code used:
+
+<pre><code>
+*Variables	
+gen 				master = (educ_level==1)
+gen 				bachelor = (educ_level==2)
+gen 				high_school = (educ_level==3)
+gen 				treatment_status = 1 if dcontrol==1
+replace 			treatment_status = 2 if treatment1==1
+replace 			treatment_status = 3 if treatment2==1
+
+*Labels
+label 				var age "Age"
+label 				var dmale "Gender: male"
+label 				var dgerman "Country of birth: Germany"
+label 				var dunemployed "Unemployed"
+label 				var dwhite "Ethnicity: white"
+label 				var dprivate "Goes to private university"
+label 				var dno_docs_req "Docs. required: none"
+label 				var master "Highest level attained: Master"
+label 				var bachelor "Highest level attained: Bachelor"
+label 				var high_school "Highest level attained: High school"
+
+global 				covariates age dmale dgerman dunemployed dwhite dprivate dno_docs_req master bachelor high_school
+
+foreach var in $covariates {
+				 
+	mean     `var', over(treatment_status)
+	
+	matrix   a1=e(b)
+	local 	 mean_control = a1[1,1]
+	local 	 mean_T1 = a1[1,2]
+	local 	 mean_T2 = a1[1,3]
+
+	reg 	 `var' treatment1 treatment2
+	
+	local    p_diff_1 = (2 * ttail(e(df_r), abs(_b[treatment1]/_se[treatment1])))
+	local    p_diff_2 = (2 * ttail(e(df_r), abs(_b[treatment2]/_se[treatment2])))
+	
+	lincom   treatment1 
+	local 	 diff_C_T1 = r(estimate)
+	
+	lincom   treatment2
+	local 	 diff_C_T2 = r(estimate)
+
+  lincom   treatment2-treatment1
+	local 	 diff_T1_T2 = r(estimate)
+	local    sd_diff_T1_T2 = r(se)
+  local    p_diff_T1_T2 = (2 * ttail(e(df_r), abs(`diff_T1_T2'/`sd_diff_T1_T2')))
+
+	
+	matrix   Balance_`var' = [ `mean_control', `mean_T1', `mean_T2', `diff_C_T1', `diff_C_T2', `diff_T1_T2'] 
+	matrix   Stars_`var' = [0,0,0,0,0,0] 
+  matrix   Stars_`var'[1,4]=(`p_diff_1'<=0.1)+(`p_diff_1'<=0.05)+(`p_diff_1'<=0.01) 
+	matrix   Stars_`var'[1,5]=(`p_diff_2'<=0.1)+(`p_diff_2'<=0.05)+(`p_diff_2'<=0.01) 
+	matrix   Stars_`var'[1,6]=(`p_diff_T1_T2'<=0.1)+(`p_diff_T1_T2'<=0.05)+(`p_diff_T1_T2'<=0.01) 
+
+  matrix   Balance = [nullmat(Balance)\ Balance_`var']
+	matrix   Stars = [nullmat(Stars)\Stars_`var']
+	}
+
+
+  frmttable using "$william\Output\Balance.tex", ///
+	tex statmat(Balance) fragment				///
+	ctitles("Variable", "Control", "T1", "T2", "T1 vs. C", "T2 vs. C", "T2 vs. T1") ///
+	rtitles("Age" \ "Gender: male" \ "Country of birth: Germany" \ "Unemployed" \ "Ethnicity: white" \ ///
+	"Goes to private university" \ "Docs. required: none" \  "Highest level attained: Master" \ ///
+	"Highest level attained: Bachelor" \ "Highest level attained: High school") ///
+	annotate(Stars) asymbol(*, **, ***) note("* p<0.1, ** p<0.05, *** p<0.01") replace 
+	
+	cap mat drop Balance Stars 
+</code></pre>
+
+# Regressions
+
+```{r, results='hide', message = FALSE, warning = FALSE}
+model_1 <- lm(G102 ~ treatment1 + treatment2, data=regressiondata)
+
+model_2 <- lm(dG102_ca ~ treatment1 + treatment2, data=regressiondata)
+
+model_3 <- lm(G103 ~ treatment1 + treatment2, data=regressiondata)
+
+model_4 <- lm(dG103_ca ~ treatment1 + treatment2, data=regressiondata)
+
+model_5 <- lm(G104 ~ treatment1 + treatment2, data=regressiondata)
+
+model_6 <- lm(dG104_ca ~ treatment1 + treatment2, data=regressiondata)
+
+stargazer::stargazer(model_1, model_2,
+                     type = "latex",
+                     report = ("vc*"),
+                     title = "Effect of treatment on Perceived Skills Transferability",
+                     model.numbers = FALSE,
+                     covariate.labels = c("Treatment 1", "Treatment 2"),
+                     dep.var.labels = c("PST-Factor", "PST-Dummy"),
+                     dep.var.caption = "", 
+                     omit.stat=c("rsq","adj.rsq","f","ser"))
+
+stargazer::stargazer(model_3, model_4, model_5, model_6,
+                     type = "latex",
+                     report = ("vc*"),
+                     title = "Effect of treatment on secondary outcomes",
+                     model.numbers = FALSE,
+                     covariate.labels = c("Treatment 1", "Treatment 2"),
+                     dep.var.labels = c("L1-Factor", "L1-Dummy","L2-Factor","L2-Dummy"),
+                     dep.var.caption = "", 
+                     omit.stat=c("rsq","adj.rsq","f","ser"))
+
+
+model_7 <- lm(dG103_ca ~ treatment1 + treatment2 + age + dmale + dgerman + dunemployed + dwhite + dprivate + dno_docs_req, data = regressiondata)
+
+model_8 <- lm(dG103_ca ~ treatment1 + treatment2 + treatment2*age + age + dmale + dgerman + dunemployed + dwhite + dprivate + dno_docs_req, data = regressiondata)
+
+model_9 <- lm(dG103_ca ~ treatment1 + treatment2 + treatment2*dunemployed + age + dmale + dgerman + dunemployed + dwhite + dprivate + dno_docs_req, data = regressiondata)
+
+
+stargazer::stargazer(model_7, model_8, model_9,
+                     type = "latex",
+                     report = ("vc*"),
+                     title = "Effect of treatment on L1: Immigrants will increase competition in the labor market for me personally",
+                     model.numbers = FALSE,
+                     dep.var.labels= "", 
+                     covariate.labels = c("Treatment 1", "Treatment 2", "Age", "Male", "German", "Unemployed", "White", "Private univ.", "No docs. req."),
+                     column.labels = c("Additive", "Interactive 1", "Interactive 2"),
+                     dep.var.caption = "", 
+                     omit = c("Constant"), 
+                     omit.stat=c("rsq","adj.rsq","f","ser"))
+```
